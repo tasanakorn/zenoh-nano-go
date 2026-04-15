@@ -1,0 +1,11 @@
+[project]
+name = "zenoh-nano-go-e2e"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["eclipse-zenoh>=1.0.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
