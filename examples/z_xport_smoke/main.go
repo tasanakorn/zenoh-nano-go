@@ -1,4 +1,4 @@
-// z_xport_test opens a subscriber via one transport and a publisher via another,
+// z_xport_smoke opens a subscriber via one transport and a publisher via another,
 // verifying that messages flow through the router between transports.
 package main
 

@@ -1,9 +1,10 @@
 # Go binaries and test artifacts
-/z_xport_test
+/z_xport_smoke
 examples/z_get/z_get
 examples/z_put/z_put
 examples/z_sub/z_sub
 examples/z_scout/z_scout
+examples/z_xport_smoke/z_xport_smoke
 *.test
 *.out
 
