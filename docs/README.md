@@ -13,6 +13,7 @@ Design documents for `zenoh-nano-go`, a pure Go Zenoh protocol client.
 | File                                         | Description                                         |
 | -------------------------------------------- | --------------------------------------------------- |
 | [wire-format-notes.md](wire-format-notes.md) | Wire format corrections found during live interop   |
+| [latency.md](latency.md)                     | Expected start-to-put latency by connection mode    |
 
 ## Conventions
 

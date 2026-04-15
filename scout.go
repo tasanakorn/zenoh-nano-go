@@ -38,6 +38,9 @@ type ScoutOptions struct {
 	What uint8
 	// Timeout is the total time to wait for hellos.
 	Timeout time.Duration
+	// ReturnOnFirst stops collecting after the first Hello is received.
+	// Useful when only one router is expected and minimal latency matters.
+	ReturnOnFirst bool
 }
 
 // Scout sends a SCOUT and collects HelloInfo replies until timeout expires.
@@ -143,6 +146,9 @@ func Scout(ctx context.Context, opts *ScoutOptions) ([]HelloInfo, error) {
 			ZID:      pz,
 			Locators: hello.Locators,
 		})
+		if opts.ReturnOnFirst {
+			return hellos, nil
+		}
 	}
 }
 
