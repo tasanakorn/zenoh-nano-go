@@ -95,6 +95,42 @@ func (m *RequestMsg) Encode() []byte {
 	return buf
 }
 
+// ResponseMsg is an outbound RESPONSE network message (emitted by a queryable).
+type ResponseMsg struct {
+	RequestID  uint64
+	DeclaredID uint16
+	KeyExpr    string
+	Body       []byte // pre-encoded body (EncodeReplyBody or EncodeErrBody output)
+}
+
+func (m *ResponseMsg) Encode() []byte {
+	var buf []byte
+	var flags uint8
+	if m.KeyExpr != "" {
+		flags |= FlagN
+	}
+	buf = append(buf, MakeHeader(NidResponse, flags))
+	buf = AppendUvarint(buf, m.RequestID)
+	buf = AppendUvarint(buf, uint64(m.DeclaredID))
+	if m.KeyExpr != "" {
+		buf = AppendZString(buf, m.KeyExpr)
+	}
+	buf = append(buf, m.Body...)
+	return buf
+}
+
+// ResponseFinalMsg terminates a query response stream.
+type ResponseFinalMsg struct {
+	RequestID uint64
+}
+
+func (m *ResponseFinalMsg) Encode() []byte {
+	var buf []byte
+	buf = append(buf, MakeHeader(NidResponseFinal, 0))
+	buf = AppendUvarint(buf, m.RequestID)
+	return buf
+}
+
 // DecodedResponse is the decoded form of a RESPONSE network message.
 type DecodedResponse struct {
 	RequestID  uint64
@@ -164,6 +200,45 @@ func decodeResponseFinalFromReader(r *bufio.Reader, flags uint8) (*DecodedRespon
 		return nil, err
 	}
 	return &DecodedResponseFinal{RequestID: reqID}, nil
+}
+
+// DecodedRequest is the decoded form of a REQUEST network message.
+type DecodedRequest struct {
+	RequestID  uint64
+	DeclaredID uint16
+	KeyExpr    string
+	BodyMID    uint8
+	Query      *QueryBody
+}
+
+// DecodeRequest decodes a REQUEST from a raw byte slice.
+func DecodeRequest(data []byte, flags uint8) (*DecodedRequest, error) {
+	return decodeRequestFromReader(bufio.NewReader(bytes.NewReader(data)), flags)
+}
+
+func decodeRequestFromReader(r *bufio.Reader, flags uint8) (*DecodedRequest, error) {
+	hasZ := flags&FlagZ != 0
+	reqID, err := ReadUvarint(r)
+	if err != nil {
+		return nil, err
+	}
+	declID, suffix, err := ReadWireExpr(r, flags)
+	if err != nil {
+		return nil, err
+	}
+	if err := SkipExtensions(r, hasZ); err != nil {
+		return nil, err
+	}
+	out := &DecodedRequest{RequestID: reqID, DeclaredID: declID, KeyExpr: suffix}
+	body, mid, err := DecodeBody(r)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	out.BodyMID = mid
+	if q, ok := body.(*QueryBody); ok {
+		out.Query = q
+	}
+	return out, nil
 }
 
 // DeclareMsg is a network DECLARE message.
@@ -244,6 +319,7 @@ type DecodedNetwork struct {
 	Kind          uint8 // NidPush, NidDeclare, NidRequest, NidResponse, NidResponseFinal
 	Push          *DecodedPush
 	Declare       *DeclareMsg
+	Request       *DecodedRequest
 	Response      *DecodedResponse
 	ResponseFinal *DecodedResponseFinal
 }
@@ -288,10 +364,15 @@ func DecodeNetworkStream(payload []byte) ([]DecodedNetwork, error) {
 				return out, err
 			}
 			out = append(out, DecodedNetwork{Kind: NidResponseFinal, ResponseFinal: rf})
-		case NidInterest, NidOAM, NidRequest:
-			// Ignored / not expected on client. Without explicit length, we cannot
-			// skip past a message of this kind safely within a batched frame, so
-			// treat any remaining bytes as consumed.
+		case NidRequest:
+			req, err := decodeRequestFromReader(r, flags)
+			if err != nil {
+				return out, err
+			}
+			out = append(out, DecodedNetwork{Kind: NidRequest, Request: req})
+		case NidInterest, NidOAM:
+			// Not supported on client; without a length prefix we cannot safely skip
+			// inside a batched frame — drain and stop.
 			_, _ = io.ReadAll(r)
 			return out, nil
 		default:

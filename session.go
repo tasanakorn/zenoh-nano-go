@@ -75,12 +75,14 @@ type Session struct {
 	// fragBufs is only accessed from the reader goroutine.
 	fragBufs map[fragKey][]byte
 
-	mu        sync.Mutex
-	subs      map[uint32]*Subscriber
-	subIDNext uint32
-	queries   map[uint64]*queryState
-	closed    bool
-	closeErr  error
+	mu              sync.Mutex
+	subs            map[uint32]*Subscriber
+	subIDNext       uint32
+	queryables      map[uint32]*Queryable
+	queryableIDNext uint32
+	queries         map[uint64]*queryState
+	closed          bool
+	closeErr        error
 }
 
 // Open dials the first working locator in cfg.Connect and completes the handshake.
@@ -204,8 +206,9 @@ func Open(ctx context.Context, cfg *Config) (*Session, error) {
 		cancel:    cancel,
 		writeCh:    make(chan []byte, cfg.WriteQueueSize),
 		writerDone: make(chan struct{}),
-		subs:      make(map[uint32]*Subscriber),
-		queries:   make(map[uint64]*queryState),
+		subs:       make(map[uint32]*Subscriber),
+		queryables: make(map[uint32]*Queryable),
+		queries:    make(map[uint64]*queryState),
 		snMask:    snMask,
 		batchSize: agreedBatch,
 		fragBufs:  make(map[fragKey][]byte),
@@ -263,6 +266,14 @@ func (s *Session) Close() error {
 	// Stop subscriber dispatch goroutines.
 	for _, sub := range subs {
 		sub.shutdown()
+	}
+
+	s.mu.Lock()
+	qas := s.queryables
+	s.queryables = map[uint32]*Queryable{}
+	s.mu.Unlock()
+	for _, qa := range qas {
+		qa.shutdown()
 	}
 
 	s.wg.Wait()
@@ -407,6 +418,10 @@ func (s *Session) dispatchNetworkPayload(payload []byte) {
 			if nm.Push != nil {
 				s.handlePush(nm.Push)
 			}
+		case wire.NidRequest:
+			if nm.Request != nil {
+				s.handleRequest(nm.Request)
+			}
 		case wire.NidDeclare:
 			// DECL_FINAL and similar -- ignore for now.
 		case wire.NidResponse:
@@ -451,6 +466,49 @@ func (s *Session) handlePush(p *wire.DecodedPush) {
 			}
 		}
 	}
+}
+
+func (s *Session) handleRequest(req *wire.DecodedRequest) {
+	if req.Query == nil || req.KeyExpr == "" {
+		_ = s.enqueue((&wire.ResponseFinalMsg{RequestID: req.RequestID}).Encode())
+		return
+	}
+	q := &Query{
+		session:    s,
+		requestID:  req.RequestID,
+		keyExpr:    req.KeyExpr,
+		Parameters: req.Query.Parameters,
+		Payload:    req.Query.Payload,
+		Encoding:   Encoding{ID: req.Query.EncodingID, Schema: req.Query.EncodingSchema},
+	}
+	s.mu.Lock()
+	qs := make([]*Queryable, 0, len(s.queryables))
+	for _, qa := range s.queryables {
+		qs = append(qs, qa)
+	}
+	s.mu.Unlock()
+	// Dispatch to the first matching queryable (first-match routing: one query
+	// produces exactly one RESPONSE_FINAL from this session).
+	for _, qa := range qs {
+		if kematch.Match(qa.pattern, req.KeyExpr) {
+			select {
+			case qa.ch <- q:
+				return
+			default:
+				// Queryable channel full — mark query closed and terminate immediately
+				// so the requester's Get unblocks. q is not handed off anywhere so
+				// the closed guard on Query is set here for correctness.
+				q.mu.Lock()
+				q.closed = true
+				q.mu.Unlock()
+				log.Printf("zenoh: slow queryable %d, dropping query for %q", qa.id, req.KeyExpr)
+				_ = s.enqueue((&wire.ResponseFinalMsg{RequestID: req.RequestID}).Encode())
+				return
+			}
+		}
+	}
+	// No matching queryable — terminate request so the caller's Get unblocks.
+	_ = s.enqueue((&wire.ResponseFinalMsg{RequestID: req.RequestID}).Encode())
 }
 
 func (s *Session) handleResponse(resp *wire.DecodedResponse) {
@@ -584,6 +642,61 @@ func (s *Session) undeclareSubscriber(id uint32) error {
 	}}
 	err := s.enqueue(decl.Encode())
 	sub.shutdown()
+	return err
+}
+
+// DeclareQueryable registers handler to be called for incoming queries matching keyExpr.
+// The returned Queryable must be closed via Queryable.Close or Session.Close.
+func (s *Session) DeclareQueryable(keyExpr string, handler func(*Query)) (*Queryable, error) {
+	if err := ValidateKeyExpr(keyExpr); err != nil {
+		return nil, err
+	}
+	if handler == nil {
+		return nil, wrapErr(ErrCatInvalidArg, "queryable handler", errors.New("nil handler"))
+	}
+	s.mu.Lock()
+	s.queryableIDNext++
+	id := s.queryableIDNext
+	qa := &Queryable{
+		session: s,
+		id:      id,
+		keyExpr: keyExpr,
+		pattern: keyExpr,
+		handler: handler,
+		ch:      make(chan *Query, 64),
+		done:    make(chan struct{}),
+	}
+	s.queryables[id] = qa
+	s.mu.Unlock()
+
+	go qa.dispatch()
+
+	decl := &wire.DeclareMsg{Bodies: []wire.DeclareBody{
+		&wire.DeclQueryableBody{QueryableID: id, KeyExpr: keyExpr},
+	}}
+	if err := s.enqueue(decl.Encode()); err != nil {
+		s.mu.Lock()
+		delete(s.queryables, id)
+		s.mu.Unlock()
+		qa.shutdown()
+		return nil, err
+	}
+	return qa, nil
+}
+
+func (s *Session) undeclareQueryable(id uint32) error {
+	s.mu.Lock()
+	qa, ok := s.queryables[id]
+	delete(s.queryables, id)
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	decl := &wire.DeclareMsg{Bodies: []wire.DeclareBody{
+		&wire.UndeclQueryableBody{QueryableID: id},
+	}}
+	err := s.enqueue(decl.Encode())
+	qa.shutdown()
 	return err
 }
 

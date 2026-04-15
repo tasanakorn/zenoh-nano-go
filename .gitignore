@@ -2,6 +2,7 @@
 /z_xport_test
 /z_xport_smoke
 /z_latency
+/z_queryable
 examples/z_get/z_get
 examples/z_put/z_put
 examples/z_sub/z_sub

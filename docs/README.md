@@ -7,6 +7,7 @@ Design documents for `zenoh-nano-go`, a pure Go Zenoh protocol client.
 | ID      | Title                                 | Status               | Version | Path                                                         |
 | ------- | ------------------------------------- | -------------------- | ------- | ------------------------------------------------------------ |
 | PRD-001 | zenoh-nano-go — Pure Go Zenoh Client  | Implemented (v0.1.0) | v0.1.0  | [prd/prd-001-zenoh-nano-go.md](prd/prd-001-zenoh-nano-go.md) |
+| PRD-002 | Implement Queryable                   | Implemented (v0.2.0) | v0.2.0  | [prd/prd-002-queryable.md](prd/prd-002-queryable.md)         |
 
 ## Other documents
 

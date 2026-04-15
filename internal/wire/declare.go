@@ -43,6 +43,22 @@ type UndeclSubscriberBody struct {
 
 func (*UndeclSubscriberBody) declareBodyID() uint8 { return UndeclSub }
 
+// DeclQueryableBody declares a queryable key expression.
+type DeclQueryableBody struct {
+	QueryableID uint32
+	DeclaredID  uint16
+	KeyExpr     string
+}
+
+func (*DeclQueryableBody) declareBodyID() uint8 { return DeclQueryable }
+
+// UndeclQueryableBody undeclares a queryable.
+type UndeclQueryableBody struct {
+	QueryableID uint32
+}
+
+func (*UndeclQueryableBody) declareBodyID() uint8 { return UndeclQue }
+
 // DeclFinalBody is sent to mark the end of a declaration sequence (handled silently).
 type DeclFinalBody struct{}
 
@@ -81,6 +97,25 @@ func EncodeDeclareBody(b DeclareBody) []byte {
 		buf = append(buf, MakeHeader(UndeclSub, 0))
 		buf = AppendUvarint(buf, uint64(d.SubID))
 		// WireExpr: id=0, no suffix (FlagN not set)
+		buf = AppendUvarint(buf, 0)
+		return buf
+	case *DeclQueryableBody:
+		var buf []byte
+		var flags uint8
+		if d.KeyExpr != "" {
+			flags |= FlagN
+		}
+		buf = append(buf, MakeHeader(DeclQueryable, flags))
+		buf = AppendUvarint(buf, uint64(d.QueryableID))
+		buf = AppendUvarint(buf, uint64(d.DeclaredID))
+		if d.KeyExpr != "" {
+			buf = AppendZString(buf, d.KeyExpr)
+		}
+		return buf
+	case *UndeclQueryableBody:
+		var buf []byte
+		buf = append(buf, MakeHeader(UndeclQue, 0))
+		buf = AppendUvarint(buf, uint64(d.QueryableID))
 		buf = AppendUvarint(buf, 0)
 		return buf
 	case *DeclFinalBody:
@@ -150,6 +185,33 @@ func DecodeDeclareBody(r *bufio.Reader) (DeclareBody, error) {
 			return nil, err
 		}
 		return &UndeclSubscriberBody{SubID: uint32(subID)}, nil
+	case DeclQueryable:
+		qid, err := ReadUvarint(r)
+		if err != nil {
+			return nil, err
+		}
+		declID, suffix, err := ReadWireExpr(r, flags)
+		if err != nil {
+			return nil, err
+		}
+		if err := SkipExtensions(r, hasZ); err != nil {
+			return nil, err
+		}
+		return &DeclQueryableBody{
+			QueryableID: uint32(qid),
+			DeclaredID:  declID,
+			KeyExpr:     suffix,
+		}, nil
+	case UndeclQue:
+		qid, err := ReadUvarint(r)
+		if err != nil {
+			return nil, err
+		}
+		_, _, _ = ReadWireExpr(r, flags)
+		if err := SkipExtensions(r, hasZ); err != nil {
+			return nil, err
+		}
+		return &UndeclQueryableBody{QueryableID: uint32(qid)}, nil
 	case DeclFinal:
 		if err := SkipExtensions(r, hasZ); err != nil {
 			return nil, err

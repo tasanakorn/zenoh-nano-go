@@ -4,4 +4,7 @@ go 1.22.0
 
 require golang.org/x/net v0.24.0
 
-require golang.org/x/sys v0.19.0 // indirect
+require (
+	go.uber.org/goleak v1.3.0 // indirect
+	golang.org/x/sys v0.19.0 // indirect
+)

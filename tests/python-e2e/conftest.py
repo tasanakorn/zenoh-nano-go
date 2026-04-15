@@ -23,7 +23,7 @@ def go_bins(tmp_path_factory):
     """Build Go example binaries once per session."""
     out = tmp_path_factory.mktemp("bins")
     bins = {}
-    for name in ("z_put", "z_sub", "z_scout"):
+    for name in ("z_put", "z_sub", "z_scout", "z_queryable"):
         dst = str(out / name)
         subprocess.run(
             ["go", "build", "-o", dst, f"./examples/{name}"],

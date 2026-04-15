@@ -2,7 +2,6 @@ package wire
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 )
@@ -45,8 +44,9 @@ type ErrBody struct {
 
 // Body-level header flags.
 const (
-	BodyFlagT = uint8(0x20) // Timestamp present (PUT/DEL/REPLY)
-	BodyFlagI = uint8(0x40) // Encoding present (PUT/REPLY/ERR)
+	BodyFlagT      = uint8(0x20) // Timestamp present (PUT/DEL/REPLY)
+	BodyFlagI      = uint8(0x40) // Encoding present (PUT/REPLY/ERR)
+	BodyFlagQParams = uint8(0x20) // parameters-present flag in QUERY body
 )
 
 // skipTimestamp reads and discards a Zenoh timestamp: u64 NTP (varint) + ZID (zbytes).
@@ -90,10 +90,11 @@ func EncodeDelBody(b *DelBody) []byte {
 func EncodeQueryBody(b *QueryBody) []byte {
 	var buf []byte
 	var flags uint8
-	// Q flag 0x20 = parameters present; we always include parameters string (may be empty)
-	const flagParams = uint8(0x20)
 	if b.Parameters != "" {
-		flags |= flagParams
+		flags |= BodyFlagQParams
+	}
+	if b.HasPayload {
+		flags |= BodyFlagI
 	}
 	buf = append(buf, MakeHeader(ZidQuery, flags))
 	if b.Parameters != "" {
@@ -105,6 +106,38 @@ func EncodeQueryBody(b *QueryBody) []byte {
 		buf = AppendEncoding(buf, b.EncodingID, b.EncodingSchema)
 		buf = AppendZBytes(buf, b.Payload)
 	}
+	return buf
+}
+
+// EncodeReplyBody encodes a REPLY body (ZidReply header + optional encoding + payload).
+func EncodeReplyBody(b *ReplyBody) []byte {
+	var buf []byte
+	var flags uint8
+	hasEnc := b.EncodingID != 0 || b.EncodingSchema != ""
+	if hasEnc {
+		flags |= BodyFlagI
+	}
+	buf = append(buf, MakeHeader(ZidReply, flags))
+	if hasEnc {
+		buf = AppendEncoding(buf, b.EncodingID, b.EncodingSchema)
+	}
+	buf = AppendZBytes(buf, b.Payload)
+	return buf
+}
+
+// EncodeErrBody encodes an ERR body (ZidErr header + optional encoding + payload).
+func EncodeErrBody(b *ErrBody) []byte {
+	var buf []byte
+	var flags uint8
+	hasEnc := b.EncodingID != 0 || b.EncodingSchema != ""
+	if hasEnc {
+		flags |= BodyFlagI
+	}
+	buf = append(buf, MakeHeader(ZidErr, flags))
+	if hasEnc {
+		buf = AppendEncoding(buf, b.EncodingID, b.EncodingSchema)
+	}
+	buf = AppendZBytes(buf, b.Payload)
 	return buf
 }
 
@@ -202,6 +235,39 @@ func DecodeErrBody(r *bufio.Reader, flags uint8) (*ErrBody, error) {
 	return b, nil
 }
 
+// DecodeQueryBody decodes a QUERY body. flags is from the body header byte
+// (already consumed by DecodeBody before calling here).
+func DecodeQueryBody(r *bufio.Reader, flags uint8) (*QueryBody, error) {
+	hasZ := flags&FlagZ != 0
+	b := &QueryBody{}
+	if flags&BodyFlagQParams != 0 {
+		p, err := ReadZString(r)
+		if err != nil {
+			return nil, err
+		}
+		b.Parameters = p
+	}
+	if err := SkipExtensions(r, hasZ); err != nil {
+		return nil, err
+	}
+	// Payload is optional; BodyFlagI signals encoding+payload present.
+	if flags&BodyFlagI != 0 {
+		id, schema, err := ReadEncoding(r)
+		if err != nil {
+			return nil, err
+		}
+		b.EncodingID = id
+		b.EncodingSchema = schema
+		payload, err := ReadZBytes(r)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		b.Payload = payload
+		b.HasPayload = true
+	}
+	return b, nil
+}
+
 // DecodeBody inspects the header byte to dispatch to the right decoder.
 // Returns the decoded value, the body-kind ID, and an error.
 func DecodeBody(r *bufio.Reader) (interface{}, uint8, error) {
@@ -225,11 +291,8 @@ func DecodeBody(r *bufio.Reader) (interface{}, uint8, error) {
 		b, err := DecodeErrBody(r, flags)
 		return b, mid, err
 	case ZidQuery:
-		// Query body from r (for server-side; not fully used in client).
-		_, _ = bytes.NewReader(nil), fmt.Sprintf("")
-		// Consume remainder silently to avoid blocking parsing.
-		_, _ = io.ReadAll(r)
-		return &QueryBody{}, mid, nil
+		b, err := DecodeQueryBody(r, flags)
+		return b, mid, err
 	default:
 		return nil, mid, fmt.Errorf("unknown body mid 0x%02x", mid)
 	}

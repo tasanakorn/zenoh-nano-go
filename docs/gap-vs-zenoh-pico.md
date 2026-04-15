@@ -66,7 +66,7 @@ Protocol version for both libraries: `0x09`.
 | Get / Query / Reply (slice-returning) | Yes   | Yes        |                                                                |
 | Publisher handle (`DeclarePublisher`) | Yes   | Yes        |                                                                |
 | Querier handle (`DeclareQuerier`)     | Yes   | Yes        |                                                                |
-| Queryable                             | Yes   | No - defer | Requires inbound REQUEST { QUERY } handling and REPLY emission |
+| Queryable (`DeclareQueryable`)        | Yes   | Yes        | Implemented in v0.2.0; auto-close via dispatch goroutine       |
 | Liveliness tokens                     | Yes   | No - defer | Separate declaration family; niche for a v0.1 client           |
 | Admin space queries                   | Yes   | No - defer | Convenience layer over existing Get; not on the critical path  |
 
@@ -88,8 +88,8 @@ Protocol version for both libraries: `0x09`.
 | DECL_SUBSCRIBER    | Yes   | Yes        | Used by `DeclareSubscriber`                                 |
 | UNDECL_SUBSCRIBER  | Yes   | Yes        | Used by `Subscriber.Undeclare`                              |
 | DECL_FINAL         | Yes   | Yes        | Acked on handshake                                          |
-| DECL_QUERYABLE     | Yes   | No - defer | Blocked on Queryable feature (section 5)                    |
-| UNDECL_QUERYABLE   | Yes   | No - defer | Blocked on Queryable feature (section 5)                    |
+| DECL_QUERYABLE     | Yes   | Yes        | Used by `DeclareQueryable` (v0.2.0)                         |
+| UNDECL_QUERYABLE   | Yes   | Yes        | Used by `Queryable.Undeclare` (v0.2.0)                      |
 | DECL_LIVELINESS    | Yes   | No - defer | Blocked on Liveliness feature (section 5)                   |
 
 ## 8. Key expressions
@@ -143,6 +143,7 @@ Interoperability with `zenohd` and with `zenoh-pico` peers over TCP / UDP unicas
 
 | Date       | Change                                                                              |
 | ---------- | ----------------------------------------------------------------------------------- |
+| 2026-04-15 | v0.2.0: Queryable, DECL_QUERYABLE, UNDECL_QUERYABLE now Yes                         |
 | 2026-04-15 | Refocused: removed parity rows; kept only features pico has that nano-go lacks      |
 | 2026-04-15 | Restructured as pico-first feature matrix                                           |
 | 2026-04-15 | Initial document against v0.1.0 scope                                               |
