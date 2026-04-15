@@ -4,16 +4,17 @@ Design documents for `zenoh-nano-go`, a pure Go Zenoh protocol client.
 
 ## Product Requirement Documents
 
-| ID      | Title                                 | Status              | Version | Path                                                        |
-| ------- | ------------------------------------- | ------------------- | ------- | ----------------------------------------------------------- |
+| ID      | Title                                 | Status               | Version | Path                                                         |
+| ------- | ------------------------------------- | -------------------- | ------- | ------------------------------------------------------------ |
 | PRD-001 | zenoh-nano-go — Pure Go Zenoh Client  | Implemented (v0.1.0) | v0.1.0  | [prd/prd-001-zenoh-nano-go.md](prd/prd-001-zenoh-nano-go.md) |
 
 ## Other documents
 
-| File                                         | Description                                         |
-| -------------------------------------------- | --------------------------------------------------- |
-| [wire-format-notes.md](wire-format-notes.md) | Wire format corrections found during live interop   |
-| [latency.md](latency.md)                     | Expected start-to-put latency by connection mode    |
+| File                                                     | Description                                                              |
+| -------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [wire-format-notes.md](wire-format-notes.md)             | Wire format corrections found during live interop                        |
+| [latency.md](latency.md)                                 | Expected start-to-put latency by connection mode                         |
+| [gap-vs-zenoh-pico.md](gap-vs-zenoh-pico.md)             | Scope gap vs zenoh-pico v1.8.0 (implemented / deferred / out of scope)   |
 
 ## Conventions
 

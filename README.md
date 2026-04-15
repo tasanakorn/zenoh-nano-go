@@ -8,18 +8,28 @@ Implements [Zenoh](https://zenoh.io) wire protocol `0x09` (client role only), us
 go get github.com/tasanakorn/zenoh-nano-go
 ```
 
-## Features
+## vs zenoh-pico
 
-| Feature              | Status |
-| -------------------- | ------ |
-| TCP unicast          | v0.1.0 |
-| UDP unicast          | v0.1.0 |
-| UDP multicast scout  | v0.1.0 |
-| Publish (Put/Delete) | v0.1.0 |
-| Subscribe            | v0.1.0 |
-| Get (query/reply)    | v0.1.0 |
-| Fragment reassembly  | v0.1.0 |
-| CGo-free             | always |
+| Feature                       | zenoh-pico | zenoh-nano-go | Notes                                |
+| ----------------------------- | ---------- | ------------- | ------------------------------------ |
+| TCP unicast (client)          | Yes        | Yes           |                                      |
+| UDP unicast (client)          | Yes        | Yes           |                                      |
+| UDP multicast scout           | Yes        | Yes           |                                      |
+| Serial / UART                 | Yes        | No            | Microcontroller-oriented             |
+| Bluetooth LE                  | Yes        | No            | Microcontroller-oriented             |
+| Raw Ethernet / SHM            | Yes        | No            | Requires CGo or kernel privileges    |
+| TLS / QUIC / WebSocket        | Yes        | planned       |                                      |
+| Client role                   | Yes        | Yes           |                                      |
+| Peer / Router role            | Yes        | No            | Out of scope; client-only by design  |
+| Publish / Delete              | Yes        | Yes           |                                      |
+| Subscribe                     | Yes        | Yes           |                                      |
+| Get / Query / Reply           | Yes        | Yes           |                                      |
+| Queryable                     | Yes        | planned       |                                      |
+| Liveliness tokens             | Yes        | planned       |                                      |
+| Fragment reassembly           | Yes        | Yes           |                                      |
+| CGo-free (`CGO_ENABLED=0`)    | -          | Yes           | Core design goal; n/a for C library  |
+
+Full details: [docs/gap-vs-zenoh-pico.md](docs/gap-vs-zenoh-pico.md)
 
 ## Quick start
 
@@ -105,13 +115,6 @@ Wire format corrections discovered during live testing:
 - Cookie in `InitAck` is varint-prefixed (not u16 LE)
 - `InitSyn` S flag set only for non-default resolution/batch_size
 - Forwarded `Put` bodies carry a timestamp (T flag `0x20`) that must be skipped
-
-## Non-goals (v0.1.0)
-
-- Peer / router / broker roles
-- Liveliness, admin space, raw-Ethernet / serial / BLE
-- TinyGo (no gratuitous blockers, but not tested)
-- Full parity with [`eclipse-zenoh/zenoh-go`](https://github.com/eclipse-zenoh/zenoh-go) (CGo binding)
 
 ## License
 
