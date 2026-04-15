@@ -1,4 +1,5 @@
 # Go binaries and test artifacts
+/z_xport_test
 /z_xport_smoke
 examples/z_get/z_get
 examples/z_put/z_put
